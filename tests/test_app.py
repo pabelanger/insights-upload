@@ -2,6 +2,7 @@ import asyncio
 import io
 import json
 import os
+import sh
 
 import pytest
 import requests
@@ -21,6 +22,10 @@ from mock import patch
 client = AsyncHTTPClient()
 with open('VERSION', 'rb') as f:
     VERSION = f.read()
+
+
+def cleanup():
+    sh.rm(app.TOPIC_CONFIG)
 
 
 class TestContentRegex(TestCase):
@@ -162,6 +167,21 @@ class TestUploadHandler(AsyncHTTPTestCase):
 
         self.assertEqual(response.exception.code, 415)
         self.assertEqual(response.exception.message, 'Upload field not found')
+
+    @gen_test
+    def test_upload_post_unsupported_mime_type(self):
+        request_context = self.prepare_request_context(file_name='payload.tar.gz', mime_type='application/vnd.redhat.boop.something+tgz')
+
+        with self.assertRaises(HTTPClientError) as response:
+            yield self.http_client.fetch(
+                self.get_url('/r/insights/platform/upload/api/v1/upload'),
+                method='POST',
+                body=request_context.body,
+                headers=request_context.headers
+            )
+
+        self.assertEqual(response.exception.code, 415)
+        self.assertEqual(response.exception.message, 'Unsupported MIME type')
 
 
 class TestProducerAndConsumer:
@@ -349,3 +369,6 @@ class TestProducerAndConsumer:
             assert app.mqc.disconnect_in_operation_called is True
             assert app.mqc.trying_to_connect_failures_calls == 1
             assert len(app.produce_queue) == 4
+
+
+cleanup()
