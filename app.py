@@ -6,6 +6,7 @@ import os
 import re
 import base64
 import sys
+import configparser
 
 from concurrent.futures import ThreadPoolExecutor
 from importlib import import_module
@@ -34,6 +35,12 @@ else:
     )
 
 logger = logging.getLogger('upload-service')
+
+# Valid topics config
+TOPIC_CONFIG = os.getenv('TOPIC_CONFIG', '/etc/upload-service/topics.ini')
+config = configparser.ConfigParser()
+config.read(TOPIC_CONFIG)
+VALID_TOPICS = [topic.split('.')[-1] for topic in config['default']['topics'].splitlines()]
 
 # Set Storage driver to use
 storage_driver = os.getenv("STORAGE_DRIVER", "s3")
@@ -261,6 +268,9 @@ class UploadHandler(tornado.web.RequestHandler):
         if re.search(content_regex, self.payload_data['content_type']) is None:
             mnm.uploads_unsupported_filetype.inc()
             error = (415, 'Unsupported Media Type')
+            return error
+        if re.search(content_regex, self.payload_data['content_type']).group(1) not in VALID_TOPICS:
+            error = (415, 'Unsupported MIME type')
             return error
 
     def get(self):
